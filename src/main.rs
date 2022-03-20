@@ -1,10 +1,15 @@
 #![allow(dead_code)]
-#![feature(trace_macros)]
-use std::{fmt::Display, fs, str::FromStr, io::Write, process::{Command, Output}};
+use std::{
+    fmt::Display,
+    fs,
+    io::Write,
+    process::{Command, Output},
+    str::FromStr,
+};
 
 use indoc::writedoc;
 
-use clap::{Parser, ArgEnum};
+use clap::{ArgEnum, Parser};
 use tempfile::NamedTempFile;
 
 struct Program {
@@ -20,9 +25,7 @@ struct LabelProvider {
 
 impl LabelProvider {
     fn new() -> Self {
-        Self {
-            counter: 0,
-        }
+        Self { counter: 0 }
     }
 
     fn get_label(&mut self) -> String {
@@ -54,7 +57,7 @@ enum CellSize {
 }
 
 impl CellSize {
-    fn to_suffix(&self) -> &'static str {
+    fn as_suffix(&self) -> &'static str {
         match self {
             Self::Byte => "b",
             Self::Word => "w",
@@ -98,27 +101,28 @@ impl TryFrom<char> for Instruction {
             ']' => Self::LoopEnd,
             '.' => Self::Print,
             ',' => Self::Input,
-            _ => Err(())?
+            _ => return Err(()),
         })
     }
 }
 
 impl Instruction {
     fn access_cell(&self) -> bool {
-        match self {
+        !matches!(
+            self,
             Instruction::NextCell
                 | Instruction::PreviousCell
                 | Instruction::NextMany(_)
                 | Instruction::PreviousMany(_)
-                => false,
-            _ => true
-        }
+        )
     }
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writedoc!(f, "
+        writedoc!(
+            f,
+            "
             .data
                 mem: .space {}, 0
                 termios: .space 60, 0
@@ -195,7 +199,9 @@ impl Display for Program {
             # rdi holds the current index
             movq $0, %rdi
 
-        ", self.size * self.cell_size as u64)?;
+        ",
+            self.size * self.cell_size as u64
+        )?;
 
         let mut lblprv = LabelProvider::new();
 
@@ -210,18 +216,23 @@ impl Display for Program {
         // stacks of loop labels
         let mut loop_start = Vec::new();
         let mut loop_end = Vec::new();
-        
+
         for i in &self.code {
             if i.access_cell() {
                 if rdi_dirty {
                     match self.mem_ovfl {
-                        MemoryOverflowBehaviour::Wrap => 
+                        MemoryOverflowBehaviour::Wrap => {
                             if size_pow2 {
-                                writedoc!(f, "
+                                writedoc!(
+                                    f,
+                                    "
                                     andq ${mask}, %rdi
-                                ")?;
+                                "
+                                )?;
                             } else {
-                                writedoc!(f, "
+                                writedoc!(
+                                    f,
+                                    "
                                     cmpq ${size}, %rdi
                                     jb {end_label}
                                     movq $0, %rdx
@@ -234,11 +245,15 @@ impl Display for Program {
                                     size = self.size
                                 )?;
                             }
-                        MemoryOverflowBehaviour::Abort =>
-                            writedoc!(f, "
+                        }
+                        MemoryOverflowBehaviour::Abort => writedoc!(
+                            f,
+                            "
                                 cmpq ${size}, %rdi
                                 jae fail
-                            ", size = self.size)?,
+                            ",
+                            size = self.size
+                        )?,
                         MemoryOverflowBehaviour::Undefined => {}
                     }
                     rdi_dirty = false;
@@ -249,81 +264,126 @@ impl Display for Program {
                 rdi_dirty = true;
             }
             match i {
-                Instruction::NextCell =>
-                    writedoc!(f, "
+                Instruction::NextCell => writedoc!(
+                    f,
+                    "
                         incq %rdi
-                    ")?,
-                Instruction::NextMany(n) =>
-                    writedoc!(f, "
+                    "
+                )?,
+                Instruction::NextMany(n) => writedoc!(
+                    f,
+                    "
                         addq ${n}, %rdi
-                    ")?,
-                Instruction::PreviousCell =>
-                    writedoc!(f, "
+                    "
+                )?,
+                Instruction::PreviousCell => writedoc!(
+                    f,
+                    "
                         decq %rdi
-                    ")?,
-                Instruction::PreviousMany(n) =>
-                    writedoc!(f, "
+                    "
+                )?,
+                Instruction::PreviousMany(n) => writedoc!(
+                    f,
+                    "
                         subq ${n}, %rdi
-                    ")?,
-                Instruction::Increment =>
-                    writedoc!(f, "
+                    "
+                )?,
+                Instruction::Increment => writedoc!(
+                    f,
+                    "
                         inc{} (%rsi, %rdi, {})
-                    ", self.cell_size.to_suffix(), self.cell_size as u64)?,
-                Instruction::IncrementMany(n) =>
-                    writedoc!(f, "
+                    ",
+                    self.cell_size.as_suffix(),
+                    self.cell_size as u64
+                )?,
+                Instruction::IncrementMany(n) => writedoc!(
+                    f,
+                    "
                         add{} ${n}, (%rsi, %rdi, {})
-                    ", self.cell_size.to_suffix(), self.cell_size as u64)?,
-                Instruction::Decrement =>
-                    writedoc!(f, "
+                    ",
+                    self.cell_size.as_suffix(),
+                    self.cell_size as u64
+                )?,
+                Instruction::Decrement => writedoc!(
+                    f,
+                    "
                         dec{} (%rsi, %rdi, {})
-                    ", self.cell_size.to_suffix(), self.cell_size as u64)?,
-                Instruction::DecrementMany(n) =>
-                    writedoc!(f, "
+                    ",
+                    self.cell_size.as_suffix(),
+                    self.cell_size as u64
+                )?,
+                Instruction::DecrementMany(n) => writedoc!(
+                    f,
+                    "
                         sub{} ${n}, (%rsi, %rdi, {})
-                    ", self.cell_size.to_suffix(), self.cell_size as u64)?,
-                Instruction::SetCell(v) =>
-                    writedoc!(f, "
+                    ",
+                    self.cell_size.as_suffix(),
+                    self.cell_size as u64
+                )?,
+                Instruction::SetCell(v) => writedoc!(
+                    f,
+                    "
                         mov{s} ${v}, (%rsi, %rdi, {l})
-                    ", s = self.cell_size.to_suffix(), l = self.cell_size as u64)?,
-                Instruction::Save =>
-                    writedoc!(f, "
+                    ",
+                    s = self.cell_size.as_suffix(),
+                    l = self.cell_size as u64
+                )?,
+                Instruction::Save => writedoc!(
+                    f,
+                    "
                         mov{s} (%rsi, %rdi, {l}), %r15{s}
-                    ", s = self.cell_size.to_suffix(), l = self.cell_size as u64)?,
-                Instruction::Restore =>
-                    writedoc!(f, "
+                    ",
+                    s = self.cell_size.as_suffix(),
+                    l = self.cell_size as u64
+                )?,
+                Instruction::Restore => writedoc!(
+                    f,
+                    "
                         mov{s} %r15{s}, (%rsi, %rdi, {l})
-                    ", s = self.cell_size.to_suffix(), l = self.cell_size as u64)?,
-                Instruction::RestoreAdd =>
-                    writedoc!(f, "
+                    ",
+                    s = self.cell_size.as_suffix(),
+                    l = self.cell_size as u64
+                )?,
+                Instruction::RestoreAdd => writedoc!(
+                    f,
+                    "
                         add{s} %r15{s}, (%rsi, %rdi, {l})
-                    ", s = self.cell_size.to_suffix(), l = self.cell_size as u64)?,
+                    ",
+                    s = self.cell_size.as_suffix(),
+                    l = self.cell_size as u64
+                )?,
                 Instruction::LoopStart => {
                     loop_start.push(lblprv.get_label());
                     loop_end.push(lblprv.get_label());
 
-                    writedoc!(f, "
+                    writedoc!(
+                        f,
+                        "
                         cmp{s} $0, (%rsi, %rdi, {size})
                         je {loop_end}
                         {loop_start}:
                     ",
-                    size = self.cell_size as u64,
-                    s = self.cell_size.to_suffix(),
-                    loop_end = loop_end.last().unwrap(),
-                    loop_start = loop_start.last().unwrap())?
-                },
-                Instruction::LoopEnd =>
-                    writedoc!(f, "
+                        size = self.cell_size as u64,
+                        s = self.cell_size.as_suffix(),
+                        loop_end = loop_end.last().unwrap(),
+                        loop_start = loop_start.last().unwrap()
+                    )?
+                }
+                Instruction::LoopEnd => writedoc!(
+                    f,
+                    "
                         cmp{s} $0, (%rsi, %rdi, {size})
                         jne {loop_start}
                         {loop_end}:
                     ",
-                        size = self.cell_size as u64,
-                        s = self.cell_size.to_suffix(),
-                        loop_end = loop_end.pop().unwrap_or_else(|| "fail".to_owned()),
-                        loop_start = loop_start.pop().unwrap_or_else(|| "fail".to_owned())
-                    )?,
-                Instruction::Print =>
-                    writedoc!(f, "
+                    size = self.cell_size as u64,
+                    s = self.cell_size.as_suffix(),
+                    loop_end = loop_end.pop().unwrap_or_else(|| "fail".to_owned()),
+                    loop_start = loop_start.pop().unwrap_or_else(|| "fail".to_owned())
+                )?,
+                Instruction::Print => writedoc!(
+                    f,
+                    "
                         movq %rdi, %r8
                         movq %rsi, %r9
                         movq (%r9, %rdi, {size}), %r10
@@ -335,9 +395,12 @@ impl Display for Program {
                         syscall
                         movq %r8, %rdi
                         movq %r9, %rsi
-                    ", size = self.cell_size as u64)?,
-                Instruction::Input =>
-                    writedoc!(f, "
+                    ",
+                    size = self.cell_size as u64
+                )?,
+                Instruction::Input => writedoc!(
+                    f,
+                    "
                         movq %rdi, %r8
                         movq %rsi, %r9
                         movq $0, %rax
@@ -354,25 +417,31 @@ impl Display for Program {
                         andq %rax, %r8
                         mov{s} %r8{s}, (%rsi, %rdi, {size})
                     ",
-                        size = self.cell_size as u64,
-                        s = self.cell_size.to_suffix()
-                    )?,
+                    size = self.cell_size as u64,
+                    s = self.cell_size.as_suffix()
+                )?,
             }
         }
 
-        writedoc!(f, "
+        writedoc!(
+            f,
+            "
             call unset_raw
             movq $60, %rax
             movq $0, %rdi
             syscall
-        ")
+        "
+        )
     }
 }
 
 mod optimize {
-    use crate::{Instruction::{self, *}, Program};
+    use crate::{
+        Instruction::{self, *},
+        Program,
+    };
 
-    pub struct OptimizationRule(fn (&mut Vec<Instruction>) -> Option<Vec<Instruction>>);
+    pub struct OptimizationRule(fn(&mut Vec<Instruction>) -> Option<Vec<Instruction>>);
     impl OptimizationRule {
         fn run(&self, v: &mut Vec<Instruction>) -> Option<Vec<Instruction>> {
             self.0(v)
@@ -410,7 +479,6 @@ mod optimize {
     }
 
     impl Program {
-
         fn get_opt_rules() -> Vec<Vec<OptimizationRule>> {
             vec![
                 // remove all singulars
@@ -467,7 +535,7 @@ mod optimize {
 
                     let mut new = Vec::new();
 
-                    while self.code.len() != 0 {
+                    while !self.code.is_empty() {
                         let mut found = false;
 
                         for rule in layer {
@@ -522,7 +590,11 @@ struct Cli {
 
 fn hanndle_output(otp: Output) -> Result<(), String> {
     if !otp.status.success() {
-        eprintln!("{}",String::from_utf8(otp.stderr).map_err(|_| "Couldn't convert stderr to string".to_string())?);
+        eprintln!(
+            "{}",
+            String::from_utf8(otp.stderr)
+                .map_err(|_| "Couldn't convert stderr to string".to_string())?
+        );
         Err("Command exited with non zero status".to_string())
     } else {
         Ok(())
@@ -536,60 +608,66 @@ fn main() {
         size: arg.memory_size,
         mem_ovfl: arg.memory_overflow,
         cell_size: arg.cell_size,
-        code: code.chars().filter_map(|c| c.try_into().ok()).collect()
+        code: code.chars().filter_map(|c| c.try_into().ok()).collect(),
     };
     if !arg.no_optimize {
         prg.optimize();
     }
-    let output = arg.output.unwrap_or_else(|| if arg.only_compile {
-        arg.path.with_extension("s")
-    } else if arg.no_link {
-        arg.path.with_extension("o")
-    } else {
-        std::path::PathBuf::from_str("a.out").unwrap()
+    let output = arg.output.unwrap_or_else(|| {
+        if arg.only_compile {
+            arg.path.with_extension("s")
+        } else if arg.no_link {
+            arg.path.with_extension("o")
+        } else {
+            std::path::PathBuf::from_str("a.out").unwrap()
+        }
     });
 
     if arg.only_compile {
-        fs::write(output,format!("{}", prg)).expect("Couldn't write");
+        fs::write(output, format!("{}", prg)).expect("Couldn't write");
     } else {
         let mut assembly = NamedTempFile::new().unwrap();
         writeln!(assembly, "{}", prg).expect("Couldn't write");
-        
+
         if arg.no_link {
-            hanndle_output(Command::new("as")
-                .arg(assembly.path())
-                .arg("-o")
-                .arg(output)
-                .output()
-                .map_err(|err| eprintln!("{err:?}"))
-                .expect("Error when assembling"))
-                .map_err(|err| eprintln!("{err}"))
-                .expect("Error when assembling");
+            hanndle_output(
+                Command::new("as")
+                    .arg(assembly.path())
+                    .arg("-o")
+                    .arg(output)
+                    .output()
+                    .map_err(|err| eprintln!("{err:?}"))
+                    .expect("Error when assembling"),
+            )
+            .map_err(|err| eprintln!("{err}"))
+            .expect("Error when assembling");
         } else {
             let object = NamedTempFile::new().unwrap();
 
-            hanndle_output(Command::new("as")
-                .arg(assembly.path())
-                .arg("-o")
-                .arg(object.path())
-                .output()
-                .map_err(|err| eprintln!("{err:?}"))
-                .expect("Error when assembling"))
-                .map_err(|err| eprintln!("{err}"))
-                .expect("Error when assembling");
+            hanndle_output(
+                Command::new("as")
+                    .arg(assembly.path())
+                    .arg("-o")
+                    .arg(object.path())
+                    .output()
+                    .map_err(|err| eprintln!("{err:?}"))
+                    .expect("Error when assembling"),
+            )
+            .map_err(|err| eprintln!("{err}"))
+            .expect("Error when assembling");
 
-            hanndle_output(Command::new("ld")
-                .arg("--nostd")
-                .arg(object.path())
-                .arg("-o")
-                .arg(output)
-                .output()
-                .map_err(|err| eprintln!("{err:?}"))
-                .expect("Error when linking"))
-                .map_err(|err| eprintln!("{err}"))
-                .expect("Error when assembling");
-
+            hanndle_output(
+                Command::new("ld")
+                    .arg("--nostd")
+                    .arg(object.path())
+                    .arg("-o")
+                    .arg(output)
+                    .output()
+                    .map_err(|err| eprintln!("{err:?}"))
+                    .expect("Error when linking"),
+            )
+            .map_err(|err| eprintln!("{err}"))
+            .expect("Error when assembling");
         }
     }
-
 }
